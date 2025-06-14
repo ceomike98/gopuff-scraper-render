@@ -1,0 +1,49 @@
+const express = require("express");
+const puppeteer = require("puppeteer-extra");
+const StealthPlugin = require("puppeteer-extra-plugin-stealth");
+const ScraperAPIPlugin = require("puppeteer-extra-plugin-proxy");
+const app = express();
+
+const port = process.env.PORT || 3000;
+
+// Add stealth plugin
+puppeteer.use(StealthPlugin());
+
+const SCRAPER_API_KEY = "263a94b0fa1c1062d3390f5e512f0f63";
+
+app.get("/", (req, res) => {
+  res.send("GoPuff Scraper is running");
+});
+
+app.get("/gopuff-products", async (req, res) => {
+  try {
+    const url = req.query.url || "https://www.gopuff.com/go/snacks/cat/1234";
+    const proxyUrl = `http://proxy.scraperapi.com:8001/?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(url)}`;
+
+    const browser = await puppeteer.launch({ headless: true });
+    const page = await browser.newPage();
+
+    await page.goto(proxyUrl, { waitUntil: "networkidle2" });
+
+    const data = await page.evaluate(() => {
+      const products = [];
+      document.querySelectorAll("[data-testid='ShelfItem']").forEach((el) => {
+        const title = el.querySelector("h2")?.innerText || "";
+        const price = el.querySelector("[data-testid='display-price']")?.innerText || "";
+        const image = el.querySelector("img")?.src || "";
+        products.push({ title, price, image });
+      });
+      return products;
+    });
+
+    await browser.close();
+    res.json(data);
+  } catch (error) {
+    console.error("Error scraping:", error.message);
+    res.status(500).send("Scraping failed");
+  }
+});
+
+app.listen(port, () => {
+  console.log(`Server listening on port ${port}`);
+});
